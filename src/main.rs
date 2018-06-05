@@ -44,7 +44,16 @@ impl event::EventHandler for GameState {
                     let n = room_gen::thread_rng().gen_range(0, 2);
 
                     self.ts
-                        .queue_tile(if n == 1 { "smiley" } else { "a" }, (i, j))
+                        .queue_tile(
+                            if n == 1 { "smiley" } else { "a" },
+                            (i, j),
+                            Some(graphics::Color::from_rgba(
+                                room_gen::thread_rng().gen_range(0, 255),
+                                room_gen::thread_rng().gen_range(0, 255),
+                                room_gen::thread_rng().gen_range(0, 255),
+                                255,
+                            )),
+                        )
                         .unwrap();
                 }
             }

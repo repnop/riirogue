@@ -34,7 +34,12 @@ impl TileSet {
         Ok(())
     }
 
-    pub fn queue_tile(&mut self, name: &'static str, coords: (u32, u32)) -> Result<(), ()> {
+    pub fn queue_tile(
+        &mut self,
+        name: &'static str,
+        coords: (u32, u32),
+        color: Option<graphics::Color>,
+    ) -> Result<(), ()> {
         let tile = self.tile_names.get(name).ok_or(())?;
         let size_tile_x = 1.0 / self.dimensions.0;
         let size_tile_y = 1.0 / self.dimensions.1;
@@ -50,6 +55,7 @@ impl TileSet {
                 coords.0 as f32 * self.tile_size.0,
                 coords.1 as f32 * self.tile_size.1,
             ),
+            color,
             ..Default::default()
         });
 
