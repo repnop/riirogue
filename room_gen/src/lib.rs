@@ -134,7 +134,7 @@ pub fn gen_rooms(
     let mut rooms = Vec::new();
 
     while current_tries < MAX_TRIES {
-        let room = Rect::random_rect(4, map_size, width_range.clone(), height_range.clone());
+        let room = Rect::random_rect(2, map_size, width_range.clone(), height_range.clone());
 
         if rooms
             .iter()

@@ -34,13 +34,13 @@ impl TileSet {
         Ok(())
     }
 
-    pub fn queue_tile(
+    pub fn queue_tile<'a>(
         &mut self,
-        name: &'static str,
+        name: &'a str,
         coords: (u32, u32),
         color: Option<graphics::Color>,
-    ) -> Result<(), ()> {
-        let tile = self.tile_names.get(name).ok_or(())?;
+    ) -> Result<(), &'a str> {
+        let tile = self.tile_names.get(name).ok_or(name)?;
         let size_tile_x = 1.0 / self.dimensions.0;
         let size_tile_y = 1.0 / self.dimensions.1;
 
@@ -58,6 +58,39 @@ impl TileSet {
             color,
             ..Default::default()
         });
+
+        Ok(())
+    }
+
+    pub fn queue_rect<'a>(
+        &mut self,
+        name: &'a str,
+        origin: (u32, u32),
+        size: (u32, u32),
+        color: Option<graphics::Color>,
+    ) -> Result<(), &'a str> {
+        let tile = self.tile_names.get(name).ok_or(name)?;
+        let size_tile_x = 1.0 / self.dimensions.0;
+        let size_tile_y = 1.0 / self.dimensions.1;
+
+        for i in 0..=size.0 {
+            for j in 0..=size.1 {
+                self.sprite_batch.add(DrawParam {
+                    src: Rect::new(
+                        size_tile_x * tile.0,
+                        size_tile_y * tile.1,
+                        size_tile_x,
+                        size_tile_y,
+                    ),
+                    dest: Point2::new(
+                        (origin.0 + i) as f32 * self.tile_size.0,
+                        (origin.1 + j) as f32 * self.tile_size.1,
+                    ),
+                    color,
+                    ..Default::default()
+                });
+            }
+        }
 
         Ok(())
     }
