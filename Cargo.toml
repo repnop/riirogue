@@ -1,0 +1,8 @@
+[package]
+authors = ["rep-nop <repnop@outlook.com>"]
+name = "riirogue"
+version = "0.1.0"
+
+[dependencies]
+ggez = "0.4.2"
+room_gen = { path = "./room_gen/" }
