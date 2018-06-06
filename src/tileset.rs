@@ -8,17 +8,24 @@ pub struct TileSet {
     tile_size: (f32, f32),
     dimensions: (f32, f32),
     tile_names: HashMap<&'static str, (f32, f32)>,
+    scale_factor: f32,
     sprite_batch: SpriteBatch,
 }
 
 impl TileSet {
-    pub fn new(image: Image, dimensions: (u32, u32), tile_size: (u32, u32)) -> TileSet {
+    pub fn new(
+        image: Image,
+        dimensions: (u32, u32),
+        tile_size: (u32, u32),
+        scale_factor: f32,
+    ) -> TileSet {
         let sprite_batch = SpriteBatch::new(image);
 
         TileSet {
             tile_size: (tile_size.0 as f32, tile_size.1 as f32),
             dimensions: (dimensions.0 as f32, dimensions.1 as f32),
             tile_names: HashMap::new(),
+            scale_factor,
             sprite_batch,
         }
     }
@@ -52,9 +59,10 @@ impl TileSet {
                 size_tile_y,
             ),
             dest: Point2::new(
-                coords.0 as f32 * self.tile_size.0,
-                coords.1 as f32 * self.tile_size.1,
+                coords.0 as f32 * self.tile_size.0 * self.scale_factor,
+                coords.1 as f32 * self.tile_size.1 * self.scale_factor,
             ),
+            scale: Point2::new(self.scale_factor, self.scale_factor),
             color,
             ..Default::default()
         });
@@ -83,9 +91,10 @@ impl TileSet {
                         size_tile_y,
                     ),
                     dest: Point2::new(
-                        (origin.0 + i) as f32 * self.tile_size.0,
-                        (origin.1 + j) as f32 * self.tile_size.1,
+                        (origin.0 + i) as f32 * self.tile_size.0 * self.scale_factor,
+                        (origin.1 + j) as f32 * self.tile_size.1 * self.scale_factor,
                     ),
+                    scale: Point2::new(self.scale_factor, self.scale_factor),
                     color,
                     ..Default::default()
                 });

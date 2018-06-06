@@ -16,6 +16,7 @@ const TILES_Y: u32 = 40;
 const TILE_SIZE: u32 = 16;
 const ROOM_SIZE_X: std::ops::Range<u32> = 4..8;
 const ROOM_SIZE_Y: std::ops::Range<u32> = 4..8;
+const SCALE_FACTOR: f32 = 0.5;
 
 struct Tile {
     pos: (u32, u32),
@@ -84,7 +85,7 @@ struct GameState {
 impl GameState {
     fn new(ctx: &mut Context) -> GameResult<GameState> {
         let image = graphics::Image::new(ctx, "/font_16.png")?;
-        let mut ts = TileSet::new(image, (32, 8), (16, 16));
+        let mut ts = TileSet::new(image, (32, 8), (16, 16), SCALE_FACTOR);
 
         ts.register_tile("smiley", (2, 0)).unwrap();
         ts.register_tile(" ", (0, 0)).unwrap();
@@ -196,6 +197,7 @@ impl GameState {
             (TILES_X as usize, TILES_Y as usize),
             ROOM_SIZE_X,
             ROOM_SIZE_Y,
+            SCALE_FACTOR,
         );
 
         Ok(GameState {
@@ -232,8 +234,11 @@ impl GameState {
     }
 
     fn draw_menu(&mut self) {
-        let center = (0, TILES_Y / 2);
-        let top_left = (center.0, center.1 - TILES_Y / 4);
+        let center = (0, (TILES_Y as f32 / SCALE_FACTOR) as u32 / 2);
+        let top_left = (
+            center.0,
+            center.1 - (TILES_Y as f32 / SCALE_FACTOR) as u32 / 4,
+        );
 
         self.ts
             .queue_rect(
@@ -268,24 +273,6 @@ impl event::EventHandler for GameState {
                 .unwrap();
         }
 
-        self.draw_string(
-            "w e w l a d  T E X T  D R A W I N G",
-            (3, 5),
-            Some(graphics::Color::from_rgba(0xF8, 0xD7, 0x90, 0xFF)),
-        );
-
-        self.draw_string(
-            "now with more special characters!",
-            (1, 24),
-            Some(graphics::Color::from_rgba(0xF8, 0xD7, 0x90, 0xFF)),
-        );
-
-        self.draw_string(
-            "!\"#$%&'()*+,-./0123456789:;<=>?",
-            (1, 25),
-            Some(graphics::Color::from_rgba(0xF8, 0xD7, 0x90, 0xFF)),
-        );
-
         if self.menu_on {
             self.draw_menu();
         }
@@ -313,6 +300,7 @@ impl event::EventHandler for GameState {
                 (TILES_X as usize, TILES_Y as usize),
                 ROOM_SIZE_X,
                 ROOM_SIZE_Y,
+                SCALE_FACTOR,
             ).into_iter()
                 .map(|r| Tile::from_rect(r))
                 .fold(Vec::new(), |mut v, t| {

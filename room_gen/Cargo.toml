@@ -2,5 +2,6 @@
 authors = ["rep-nop <repnop@outlook.com>"]
 name = "room_gen"
 version = "0.1.0"
+
 [dependencies]
 rand = "0.5.0"

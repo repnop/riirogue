@@ -45,32 +45,19 @@ impl Rect {
             || self.bottom() < other.top())
     }
 
-    pub fn intersects_with_buffer(
-        &self,
-        &Rect {
-            x,
-            y,
-            width,
-            height,
-        }: &Rect,
-        buffer: u32,
-    ) -> bool {
-        let this = Rect::new(
-            clamp(self.left() - buffer, 0, self.left()),
-            clamp(self.top() - buffer, 0, self.top()),
-            self.right() + buffer,
-            self.bottom() + buffer,
-        );
-
-        let other = Rect::new(
-            x,      //clamp(x - buffer as i32, 0, x),
-            y,      //clamp(y - buffer as i32, 0, y),
-            width,  // + buffer,
-            height, // + buffer,
-        );
-
-        this.intersects(&other)
+    pub fn intersects_with_buffer(&self, other: &Rect, buffer: u32) -> bool {
+        self.buffer(buffer).intersects(&other.buffer(buffer))
     }
+
+    pub fn buffer(&self, buffer: u32) -> Rect {
+        Rect::new(
+            clamp(self.x - buffer, 0, self.x),
+            clamp(self.y - buffer, 0, self.y),
+            self.width + buffer,
+            self.height + buffer,
+        )
+    }
+
     pub fn x(&self) -> u32 {
         self.x
     }
@@ -96,25 +83,19 @@ impl Rect {
     }
 
     pub fn random_rect(
-        offset: u32,
-        map_size: (usize, usize),
-        width_range: Range<u32>,
-        height_range: Range<u32>,
+        rng: &mut impl Rng,
+        x_uniform: &Uniform<u32>,
+        y_uniform: &Uniform<u32>,
+        w_uniform: &Uniform<u32>,
+        h_uniform: &Uniform<u32>,
     ) -> Rect {
-        let x = thread_rng().sample(Uniform::new(
-            offset,
-            map_size.0 as u32 - offset - width_range.end,
-        ));
-        let y = thread_rng().sample(Uniform::new(
-            offset,
-            map_size.1 as u32 - offset - height_range.end,
-        ));
+        use rand::distributions::{Distribution, Normal};
 
         Rect {
-            x,
-            y,
-            width: thread_rng().sample(Uniform::new(width_range.start, width_range.end)),
-            height: thread_rng().sample(Uniform::new(height_range.start, height_range.end)),
+            x: x_uniform.sample(rng),
+            y: y_uniform.sample(rng),
+            width: w_uniform.sample(rng),
+            height: h_uniform.sample(rng),
         }
     }
 }
@@ -126,6 +107,7 @@ pub fn gen_rooms(
     map_size: (usize, usize),
     width_range: Range<u32>,
     height_range: Range<u32>,
+    scale_factor: f32,
 ) -> Rooms {
     const MAX_TRIES: usize = 10000;
 
@@ -133,19 +115,43 @@ pub fn gen_rooms(
 
     let mut rooms = Vec::new();
 
+    let true_size = (
+        (map_size.0 as f32 / scale_factor) as usize,
+        (map_size.1 as f32 / scale_factor) as usize,
+    );
+
+    let mut avg_x = 0.0f32;
+    let mut avg_y = 0.0f32;
+    let mut count = 0.0f32;
+    let offset = 2;
+
+    let x_uniform = Uniform::new(offset, true_size.0 as u32 - offset - width_range.end);
+    let y_uniform = Uniform::new(offset, true_size.1 as u32 - offset - height_range.end);
+    let w_uniform = Uniform::new(width_range.start, width_range.end);
+    let h_uniform = Uniform::new(height_range.start, height_range.end);
+    let mut rng = thread_rng();
+
     while current_tries < MAX_TRIES {
-        let room = Rect::random_rect(2, map_size, width_range.clone(), height_range.clone());
+        //let room = Rect::random_rect(2, true_size, width_range.clone(), height_range.clone());
+        let room = Rect::random_rect(&mut rng, &x_uniform, &y_uniform, &w_uniform, &h_uniform);
 
         if rooms
             .iter()
             .any(|r: &Rect| r.intersects_with_buffer(&room, 2))
         {
+            count += 1.0;
+            avg_x += room.x as f32;
+            avg_y += room.y as f32;
+
+            //println!("{:?} COLLISION", room);
             current_tries += 1;
         } else {
             current_tries = 0;
             rooms.push(room);
         }
     }
+
+    println!("Avg. X: {}, Avg. Y: {}", avg_x / count, avg_y / count);
 
     rooms
 }
