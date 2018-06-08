@@ -1,83 +1,40 @@
 extern crate ggez;
-extern crate room_gen;
+extern crate rand;
 
+macro_rules! debugln {
+    () => (#[cfg(debug_assertions)] print!("\n"));
+    ($fmt:expr) => (#[cfg(debug_assertions)] print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => (#[cfg(debug_assertions)] print!(concat!($fmt, "\n"), $($arg)*));
+}
+
+mod constants;
+mod helpers;
+mod map;
 mod tileset;
 
 use ggez::{
     conf::{self, WindowMode}, event, graphics, Context, GameResult,
 };
 
-use room_gen::Rect;
+use helpers::clamp;
+use map::{
+    generation::{generate_map, MapGenOptions, Nystrom}, Map,
+};
 use std::{env, path};
 use tileset::TileSet;
 
-const TILES_X: u32 = 50;
-const TILES_Y: u32 = 40;
+const TILES_X: u32 = 51;
+const TILES_Y: u32 = 41;
 const TILE_SIZE: u32 = 16;
-const ROOM_SIZE_X: std::ops::Range<u32> = 4..8;
-const ROOM_SIZE_Y: std::ops::Range<u32> = 4..8;
-const SCALE_FACTOR: f32 = 0.5;
-
-struct Tile {
-    pos: (u32, u32),
-    tile_id: &'static str,
-    color: Option<graphics::Color>,
-}
-
-impl Tile {
-    fn new(tile_id: &'static str, pos: (u32, u32), color: Option<graphics::Color>) -> Tile {
-        Tile {
-            pos,
-            tile_id,
-            color,
-        }
-    }
-
-    fn from_rect(room: Rect) -> Vec<Tile> {
-        use room_gen::Rng;
-
-        let mut tiles = Vec::with_capacity(room.x as usize * room.y as usize);
-
-        for i in room.x..=room.x + room.width {
-            for j in room.y..=room.y + room.height {
-                if i == room.x && j == room.y {
-                    tiles.push(Tile::new("wall", (i, j), None));
-                } else if i == room.x + room.width && j == room.y {
-                    tiles.push(Tile::new("wall", (i, j), None));
-                } else if i == room.x && j == room.y + room.height {
-                    tiles.push(Tile::new("wall", (i, j), None));
-                } else if i == room.x + room.width && j == room.y + room.height {
-                    tiles.push(Tile::new("wall", (i, j), None));
-                } else if i == room.x || i == room.x + room.width {
-                    tiles.push(Tile::new("wall", (i, j), None));
-                } else if j == room.y || j == room.y + room.height {
-                    tiles.push(Tile::new("wall", (i, j), None));
-                } else {
-                    let n = room_gen::thread_rng().gen_range(0, 20);
-                    tiles.push(Tile::new(
-                        if n < 8 && n >= 3 {
-                            "floor_scatter_light"
-                        } else if n < 3 {
-                            "floor_scatter_heavy"
-                        } else if n < 11 && n >= 8 {
-                            "grass"
-                        } else {
-                            " "
-                        },
-                        (i, j),
-                        None,
-                    ));
-                }
-            }
-        }
-
-        tiles
-    }
-}
+const ROOM_WIDTH: std::ops::Range<u32> = 4..8;
+const ROOM_HEIGHT: std::ops::Range<u32> = 4..8;
+const SCALE_FACTOR: f32 = 1.0;
+const MAP_WIDTH: u32 = (TILES_X as f32 / SCALE_FACTOR) as u32;
+const MAP_HEIGHT: u32 = (TILES_Y as f32 / SCALE_FACTOR) as u32;
 
 struct GameState {
     ts: TileSet,
-    tiles: Vec<Tile>,
+    map: Map,
     menu_on: bool,
     menu_cursor_y: u32,
 }
@@ -87,128 +44,18 @@ impl GameState {
         let image = graphics::Image::new(ctx, "/font_16.png")?;
         let mut ts = TileSet::new(image, (32, 8), (16, 16), SCALE_FACTOR);
 
-        ts.register_tile("smiley", (2, 0)).unwrap();
-        ts.register_tile(" ", (0, 0)).unwrap();
-
-        // Register alphabet
-        ts.register_tile("A", (1, 2)).unwrap();
-        ts.register_tile("B", (2, 2)).unwrap();
-        ts.register_tile("C", (3, 2)).unwrap();
-        ts.register_tile("D", (4, 2)).unwrap();
-        ts.register_tile("E", (5, 2)).unwrap();
-        ts.register_tile("F", (6, 2)).unwrap();
-        ts.register_tile("G", (7, 2)).unwrap();
-        ts.register_tile("H", (8, 2)).unwrap();
-        ts.register_tile("I", (9, 2)).unwrap();
-        ts.register_tile("J", (10, 2)).unwrap();
-        ts.register_tile("K", (11, 2)).unwrap();
-        ts.register_tile("L", (12, 2)).unwrap();
-        ts.register_tile("M", (13, 2)).unwrap();
-        ts.register_tile("N", (14, 2)).unwrap();
-        ts.register_tile("O", (15, 2)).unwrap();
-        ts.register_tile("P", (16, 2)).unwrap();
-        ts.register_tile("Q", (17, 2)).unwrap();
-        ts.register_tile("R", (18, 2)).unwrap();
-        ts.register_tile("S", (19, 2)).unwrap();
-        ts.register_tile("T", (20, 2)).unwrap();
-        ts.register_tile("U", (21, 2)).unwrap();
-        ts.register_tile("V", (22, 2)).unwrap();
-        ts.register_tile("W", (23, 2)).unwrap();
-        ts.register_tile("X", (24, 2)).unwrap();
-        ts.register_tile("Y", (25, 2)).unwrap();
-        ts.register_tile("Z", (26, 2)).unwrap();
-
-        ts.register_tile("a", (1, 3)).unwrap();
-        ts.register_tile("b", (2, 3)).unwrap();
-        ts.register_tile("c", (3, 3)).unwrap();
-        ts.register_tile("d", (4, 3)).unwrap();
-        ts.register_tile("e", (5, 3)).unwrap();
-        ts.register_tile("f", (6, 3)).unwrap();
-        ts.register_tile("g", (7, 3)).unwrap();
-        ts.register_tile("h", (8, 3)).unwrap();
-        ts.register_tile("i", (9, 3)).unwrap();
-        ts.register_tile("j", (10, 3)).unwrap();
-        ts.register_tile("k", (11, 3)).unwrap();
-        ts.register_tile("l", (12, 3)).unwrap();
-        ts.register_tile("m", (13, 3)).unwrap();
-        ts.register_tile("n", (14, 3)).unwrap();
-        ts.register_tile("o", (15, 3)).unwrap();
-        ts.register_tile("p", (16, 3)).unwrap();
-        ts.register_tile("q", (17, 3)).unwrap();
-        ts.register_tile("r", (18, 3)).unwrap();
-        ts.register_tile("s", (19, 3)).unwrap();
-        ts.register_tile("t", (20, 3)).unwrap();
-        ts.register_tile("u", (21, 3)).unwrap();
-        ts.register_tile("v", (22, 3)).unwrap();
-        ts.register_tile("w", (23, 3)).unwrap();
-        ts.register_tile("x", (24, 3)).unwrap();
-        ts.register_tile("y", (25, 3)).unwrap();
-        ts.register_tile("z", (26, 3)).unwrap();
-
-        // Numbers
-        ts.register_tile("0", (16, 1)).unwrap();
-        ts.register_tile("1", (17, 1)).unwrap();
-        ts.register_tile("2", (18, 1)).unwrap();
-        ts.register_tile("3", (19, 1)).unwrap();
-        ts.register_tile("4", (20, 1)).unwrap();
-        ts.register_tile("5", (21, 1)).unwrap();
-        ts.register_tile("6", (22, 1)).unwrap();
-        ts.register_tile("7", (23, 1)).unwrap();
-        ts.register_tile("8", (24, 1)).unwrap();
-        ts.register_tile("9", (25, 1)).unwrap();
-
-        // Specials
-        ts.register_tile("!", (1, 1)).unwrap();
-        ts.register_tile("\"", (2, 1)).unwrap();
-        ts.register_tile("#", (3, 1)).unwrap();
-        ts.register_tile("$", (4, 1)).unwrap();
-        ts.register_tile("%", (5, 1)).unwrap();
-        ts.register_tile("&", (6, 1)).unwrap();
-        ts.register_tile("'", (7, 1)).unwrap();
-        ts.register_tile("(", (8, 1)).unwrap();
-        ts.register_tile(")", (9, 1)).unwrap();
-        ts.register_tile("*", (10, 1)).unwrap();
-        ts.register_tile("+", (11, 1)).unwrap();
-        ts.register_tile(",", (12, 1)).unwrap();
-        ts.register_tile("-", (13, 1)).unwrap();
-        ts.register_tile(".", (14, 1)).unwrap();
-        ts.register_tile("/", (15, 1)).unwrap();
-        ts.register_tile(":", (26, 1)).unwrap();
-        ts.register_tile(";", (27, 1)).unwrap();
-        ts.register_tile("<", (28, 1)).unwrap();
-        ts.register_tile("=", (29, 1)).unwrap();
-        ts.register_tile(">", (30, 1)).unwrap();
-        ts.register_tile("?", (31, 1)).unwrap();
-
-        // Room Characters
-        ts.register_tile("room_bottom_left", (8, 6)).unwrap();
-        ts.register_tile("room_bottom_right", (28, 5)).unwrap();
-        ts.register_tile("room_side_lr", (26, 5)).unwrap();
-        ts.register_tile("room_side_tb", (13, 6)).unwrap();
-        ts.register_tile("room_top_left", (27, 5)).unwrap();
-        ts.register_tile("room_top_right", (9, 6)).unwrap();
-        ts.register_tile("wall", (17, 5)).unwrap();
-        ts.register_tile("floor_scatter_light", (13, 7)).unwrap();
-        ts.register_tile("floor_scatter_heavy", (14, 7)).unwrap();
-        ts.register_tile("grass", (27, 7)).unwrap();
-        ts.register_tile("solid_block", (27, 6)).unwrap();
-
-        let tiles = room_gen::gen_rooms(
-            (TILES_X as usize, TILES_Y as usize),
-            ROOM_SIZE_X,
-            ROOM_SIZE_Y,
-            SCALE_FACTOR,
-        );
+        constants::register_tiles(&mut ts).unwrap();
 
         Ok(GameState {
             ts,
-            tiles: tiles
-                .into_iter()
-                .map(|r| Tile::from_rect(r))
-                .fold(Vec::new(), |mut v, t| {
-                    v.extend(t);
-                    v
-                }),
+            map: generate_map::<Nystrom>(MapGenOptions::new(
+                MAP_WIDTH,
+                MAP_HEIGHT,
+                ROOM_WIDTH,
+                ROOM_HEIGHT,
+                0,
+                1,
+            )),
             menu_on: false,
             menu_cursor_y: 0,
         })
@@ -267,10 +114,13 @@ impl GameState {
 
 impl event::EventHandler for GameState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        for tile in &self.tiles {
-            self.ts
-                .queue_tile(tile.tile_id, tile.pos, tile.color)
-                .unwrap();
+        for tile in self.map.iter().filter(|t| !t.tile_type.is_empty()) {
+            if let Err(e) =
+                self.ts
+                    .queue_tile(tile.tile_type.name(), (tile.pos.x, tile.pos.y), tile.color)
+            {
+                println!("Tile \"{}\" not found", e);
+            }
         }
 
         if self.menu_on {
@@ -293,30 +143,34 @@ impl event::EventHandler for GameState {
         _ctx: &mut Context,
         keycode: event::Keycode,
         _: event::Mod,
-        _: bool,
+        repeat: bool,
     ) {
-        if let event::Keycode::R = keycode {
-            self.tiles = room_gen::gen_rooms(
-                (TILES_X as usize, TILES_Y as usize),
-                ROOM_SIZE_X,
-                ROOM_SIZE_Y,
-                SCALE_FACTOR,
-            ).into_iter()
-                .map(|r| Tile::from_rect(r))
-                .fold(Vec::new(), |mut v, t| {
-                    v.extend(t);
-                    v
-                });
-        } else if let event::Keycode::M = keycode {
-            self.menu_on = !self.menu_on;
-        } else if let event::Keycode::Down = keycode {
-            if self.menu_cursor_y + 1 > 5 {
-                self.menu_cursor_y = 0;
-            } else {
-                self.menu_cursor_y = room_gen::clamp(self.menu_cursor_y + 1, 0, 5);
+        if !repeat {
+            if let event::Keycode::R = keycode {
+                #[cfg(debug_assertions)]
+                let time = std::time::Instant::now();
+
+                self.map = generate_map::<Nystrom>(MapGenOptions::new(
+                    MAP_WIDTH,
+                    MAP_HEIGHT,
+                    ROOM_WIDTH,
+                    ROOM_HEIGHT,
+                    0,
+                    1,
+                ));
+
+                debugln!("Generation took: {} μs", time.elapsed().subsec_micros());
+            } else if let event::Keycode::M = keycode {
+                self.menu_on = !self.menu_on;
+            } else if let event::Keycode::Down = keycode {
+                if self.menu_cursor_y + 1 > 5 {
+                    self.menu_cursor_y = 0;
+                } else {
+                    self.menu_cursor_y = clamp(self.menu_cursor_y + 1, 0, 5);
+                }
+            } else if let event::Keycode::Up = keycode {
+                self.menu_cursor_y = clamp(self.menu_cursor_y - 1, 0, 5);
             }
-        } else if let event::Keycode::Up = keycode {
-            self.menu_cursor_y = room_gen::clamp(self.menu_cursor_y - 1, 0, 5);
         }
     }
 }
