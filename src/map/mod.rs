@@ -1,16 +1,17 @@
 pub mod generation;
+mod pathfinding;
 
 use constants::*;
 use ggez::{
     error::GameResult, graphics::{Color, DrawParam}, Context,
 };
 use helpers::Rect;
-use std::ops::{Deref, DerefMut};
-use tileset::TileSet;
-
+use pathfinding::utils::absdiff;
 use rand::{
     distributions::{Distribution, Weighted, WeightedChoice}, thread_rng,
 };
+use std::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
+use tileset::TileSet;
 
 pub struct Map {
     tiles: Vec<Tile>,
@@ -34,6 +35,14 @@ impl Map {
             height,
         }
     }
+
+    pub fn tile_at<T: Into<Coords<u32>>>(&self, coords: T) -> Option<Tile> {
+        let coords = coords.into();
+
+        self.tiles
+            .get((coords.y * self.width + coords.x) as usize)
+            .map(|&t| t)
+    }
 }
 
 impl Deref for Map {
@@ -50,7 +59,7 @@ impl DerefMut for Map {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TileType {
     Empty,
     BlankRoomFloor,
@@ -59,6 +68,7 @@ pub enum TileType {
     LightScatterRoomFloor,
     Pathway,
     Wall,
+    Door,
 }
 
 impl TileType {
@@ -66,7 +76,7 @@ impl TileType {
         use self::TileType::*;
 
         match self {
-            BlankRoomFloor | HeavyScatterRoomFloor | LightScatterRoomFloor | Grass => true,
+            BlankRoomFloor | HeavyScatterRoomFloor | LightScatterRoomFloor | Grass | Wall => true,
             _ => false,
         }
     }
@@ -100,6 +110,7 @@ impl TileType {
             LightScatterRoomFloor => TILE_ROOM_FLRSCLGT.name,
             Pathway => TILE_PATH.name,
             Wall => TILE_ROOM_WALL.name,
+            Door => TILE_CAP_R.name,
         }
     }
 }
@@ -110,8 +121,23 @@ pub struct Coords<T> {
     pub y: T,
 }
 
+impl<
+        T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T> + Copy + PartialOrd,
+    > Coords<T>
+{
+    fn distance(&self, other: Coords<T>) -> T {
+        absdiff(self.x, other.x) + absdiff(self.y, other.y)
+    }
+}
+
 impl<T> From<(T, T)> for Coords<T> {
     fn from((x, y): (T, T)) -> Coords<T> {
+        Coords { x, y }
+    }
+}
+
+impl<'a, T: Copy> From<&'a (T, T)> for Coords<T> {
+    fn from(&(x, y): &(T, T)) -> Coords<T> {
         Coords { x, y }
     }
 }

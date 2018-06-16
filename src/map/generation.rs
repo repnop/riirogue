@@ -1,5 +1,7 @@
+use ggez::graphics::Color;
 use helpers::*;
 use map::*;
+//use pathfinding::prelude::*;
 use rand::{distributions::Uniform, thread_rng};
 use std::ops::Range;
 
@@ -9,12 +11,12 @@ pub fn generate_map<T: MapGen>(opts: MapGenOptions) -> Map {
 
 #[derive(Debug, Clone)]
 pub struct MapGenOptions {
-    map_width: u32,
-    map_height: u32,
-    room_width: Range<u32>,
-    room_height: Range<u32>,
-    outside_buffer: u32,
-    room_buffer: u32,
+    pub map_width: u32,
+    pub map_height: u32,
+    pub room_width: Range<u32>,
+    pub room_height: Range<u32>,
+    pub outside_buffer: u32,
+    pub room_buffer: u32,
 }
 
 impl MapGenOptions {
@@ -41,6 +43,106 @@ pub trait MapGen {
     fn gen(options: MapGenOptions) -> Map;
 }
 
+pub struct Simple;
+
+impl MapGen for Simple {
+    fn gen(options: MapGenOptions) -> Map {
+        use rand::Rng;
+
+        let mut rooms = Vec::new();
+
+        let mut rng = thread_rng();
+
+        let x_uniform = Uniform::new(
+            0 + options.outside_buffer,
+            options.map_width - options.outside_buffer - options.room_width.end,
+        );
+
+        let y_uniform = Uniform::new(
+            0 + options.outside_buffer,
+            options.map_height - options.outside_buffer - options.room_height.end,
+        );
+
+        let w_uniform = Uniform::new(options.room_width.start, options.room_width.end);
+        let h_uniform = Uniform::new(options.room_height.start, options.room_height.end);
+
+        let mut map = Map::new(options.map_width, options.map_height);
+        let mut doors = Vec::new();
+
+        for _ in 0..=100 {
+            let room = Rect::random_rect(&mut rng, &x_uniform, &y_uniform, &w_uniform, &h_uniform);
+
+            if !rooms
+                .iter()
+                .any(|r: &Rect| r.intersects_with_buffer(&room, options.room_buffer))
+            {
+                for tile in Tile::from_room_rect(room) {
+                    map[(tile.pos.y * options.map_width + tile.pos.x) as usize] = tile;
+                }
+
+                let center = room.center();
+
+                let door_options = [
+                    (center.0, room.y),
+                    (center.0, room.y + room.height),
+                    (room.x, center.1),
+                    (room.x + room.width, center.1),
+                ];
+
+                let choice = door_options[thread_rng().gen_range(0, 4)];
+
+                map[(choice.1 * options.map_width + choice.0) as usize] =
+                    Tile::new(TileType::Door, choice, None);
+
+                doors.push(choice);
+
+                rooms.push(room);
+            }
+        }
+
+        for (door1, door2) in doors
+            .iter()
+            .zip(doors.iter().skip(1))
+            .map(|(&(x1, y1), &(x2, y2))| ((x1 as i32, y1 as i32), (x2 as i32, y2 as i32)))
+        {
+            let path = pathfinding::ortho_star(
+                door1,
+                door2,
+                |x, y| {
+                    let t = map.tile_at((x as u32, y as u32));
+
+                    if let Some(t) = t {
+                        !t.tile_type.is_room_tile()
+                    } else {
+                        false
+                    }
+                },
+                |_, _| 1,
+            );
+
+            let color = Color::from_rgb(
+                thread_rng().gen_range(0, 255),
+                thread_rng().gen_range(0, 255),
+                thread_rng().gen_range(0, 255),
+            );
+
+            if let Some(path) = path {
+                for (x, y) in path {
+                    let (x, y) = (x as u32, y as u32);
+
+                    if !doors.iter().any(|&coord| coord == (x, y)) {
+                        map[(y * options.map_width + x) as usize] =
+                            Tile::new(TileType::Pathway, (x, y), Some(color));
+                    }
+                }
+            }
+        }
+
+        map
+    }
+}
+
+/*
 pub struct Nystrom;
 
 impl Nystrom {
@@ -97,65 +199,62 @@ impl Nystrom {
     }
 
     fn gen_maze(options: MapGenOptions, map: &mut [Tile]) {
+        use rand::Rng;
+
         let map_width = options.map_width;
         let map_height = options.map_height;
+        let mut dir = Direction::South;
 
         while let Some(start) = find_start(map, map_height, map_width) {
-            let mut next_tiles = Vec::new();
+            let color = Color::from_rgb(
+                thread_rng().gen_range(0, 255),
+                thread_rng().gen_range(0, 255),
+                thread_rng().gen_range(0, 255),
+            );
 
-            next_tiles.push(start);
+            let tile = 
 
-            while !next_tiles.is_empty() {
-                let tile = next_tiles.pop().unwrap();
-                dig(map, map_width, tile);
+            dig(map, map_width, tile, Some(color));
 
-                for dir in vec![
-                    Direction::North,
-                    Direction::South,
-                    Direction::East,
-                    Direction::West,
-                ] {
-                    let (x, y) = tile;
+            let (x, y) = tile;
 
-                    if dir == Direction::North || dir == Direction::South {
-                        let ecoord = Direction::East.apply_direction((x, y));
-                        let wcoord = Direction::West.apply_direction((x, y));
-                        let eidx = (ecoord.1 * map_width + ecoord.0) as usize;
-                        let widx = (wcoord.1 * map_width + wcoord.0) as usize;
-                        if let Some(Tile {
-                            tile_type: TileType::Empty,
-                            ..
-                        }) = map.get(eidx)
-                        {
-                            if let Some(Tile {
-                                tile_type: TileType::Empty,
-                                ..
-                            }) = map.get(widx)
-                            {
-                                if can_dig(map, map_width, tile, dir) {
-                                    next_tiles.push(dir.apply_direction(tile));
-                                }
-                            }
+            if dir == Direction::North || dir == Direction::South {
+                let ecoord = Direction::East.apply_direction((x, y));
+                let wcoord = Direction::West.apply_direction((x, y));
+                let eidx = (ecoord.1 * map_width + ecoord.0) as usize;
+                let widx = (wcoord.1 * map_width + wcoord.0) as usize;
+                if let Some(Tile {
+                    tile_type: TileType::Empty,
+                    ..
+                }) = map.get(eidx)
+                {
+                    if let Some(Tile {
+                        tile_type: TileType::Empty,
+                        ..
+                    }) = map.get(widx)
+                    {
+                        if can_dig(map, map_width, tile, dir) {
+                            next_tiles.push(dir.apply_direction(tile));
                         }
-                    } else {
-                        let ncoord = Direction::North.apply_direction((x, y));
-                        let scoord = Direction::South.apply_direction((x, y));
-                        let nidx = (ncoord.1 * map_width + ncoord.0) as usize;
-                        let sidx = (scoord.1 * map_width + scoord.0) as usize;
-                        if let Some(Tile {
-                            tile_type: TileType::Empty,
-                            ..
-                        }) = map.get(nidx)
-                        {
-                            if let Some(Tile {
-                                tile_type: TileType::Empty,
-                                ..
-                            }) = map.get(sidx)
-                            {
-                                if can_dig(map, map_width, tile, dir) {
-                                    next_tiles.push(dir.apply_direction(tile));
-                                }
-                            }
+                    }
+                }
+            } else {
+                let ncoord = Direction::North.apply_direction((x, y));
+                let scoord = Direction::South.apply_direction((x, y));
+                let nidx = (ncoord.1 * map_width + ncoord.0) as usize;
+                let sidx = (scoord.1 * map_width + scoord.0) as usize;
+                if let Some(Tile {
+                    tile_type: TileType::Empty,
+                    ..
+                }) = map.get(nidx)
+                {
+                    if let Some(Tile {
+                        tile_type: TileType::Empty,
+                        ..
+                    }) = map.get(sidx)
+                    {
+                        if can_dig(map, map_width, tile, dir) {
+                            next_tiles.push(dir.apply_direction(tile));
                         }
                     }
                 }
@@ -242,10 +341,10 @@ fn can_dig(map: &[Tile], map_width: u32, pos: (u32, u32), dir: Direction) -> boo
     }
 }
 
-fn dig(map: &mut [Tile], map_width: u32, (x, y): (u32, u32)) {
+fn dig(map: &mut [Tile], map_width: u32, (x, y): (u32, u32), color: Option<Color>) {
     let idx = (y * map_width + x) as usize;
 
-    map[idx] = Tile::new(TileType::Pathway, (x, y), None);
+    map[idx] = Tile::new(TileType::Pathway, (x, y), color);
 }
 
 fn find_start(map: &[Tile], map_height: u32, map_width: u32) -> Option<(u32, u32)> {
@@ -313,3 +412,4 @@ impl MapGen for Nystrom {
         }
     }
 }
+*/

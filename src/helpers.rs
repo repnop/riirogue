@@ -18,6 +18,14 @@ impl Rect {
         }
     }
 
+    pub fn contains(&self, (x, y): (u32, u32)) -> bool {
+        (x >= self.left() && x <= self.right()) && (y >= self.top() && y <= self.bottom())
+    }
+
+    pub fn center(&self) -> (u32, u32) {
+        (self.x + self.width / 2, self.y + self.height / 2)
+    }
+
     pub fn intersects(&self, other: &Rect) -> bool {
         !(self.left() > other.right() || self.right() < other.left() || self.top() > other.bottom()
             || self.bottom() < other.top())

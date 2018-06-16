@@ -1,4 +1,5 @@
 extern crate ggez;
+extern crate pathfinding;
 extern crate rand;
 
 macro_rules! debugln {
@@ -18,19 +19,27 @@ use ggez::{
 
 use helpers::clamp;
 use map::{
-    generation::{generate_map, MapGenOptions, Nystrom}, Map,
+    generation::{generate_map, MapGenOptions, Simple}, Map,
 };
 use std::{env, path};
 use tileset::TileSet;
 
-const TILES_X: u32 = 51;
-const TILES_Y: u32 = 41;
+const TILES_X: u32 = 50;
+const TILES_Y: u32 = 40;
 const TILE_SIZE: u32 = 16;
 const ROOM_WIDTH: std::ops::Range<u32> = 4..8;
 const ROOM_HEIGHT: std::ops::Range<u32> = 4..8;
-const SCALE_FACTOR: f32 = 1.0;
+const SCALE_FACTOR: f32 = 0.5;
 const MAP_WIDTH: u32 = (TILES_X as f32 / SCALE_FACTOR) as u32;
 const MAP_HEIGHT: u32 = (TILES_Y as f32 / SCALE_FACTOR) as u32;
+const MAP_GEN_OPTIONS: MapGenOptions = MapGenOptions {
+    map_width: MAP_WIDTH,
+    map_height: MAP_HEIGHT,
+    room_width: ROOM_WIDTH,
+    room_height: ROOM_HEIGHT,
+    outside_buffer: 2,
+    room_buffer: 2,
+};
 
 struct GameState {
     ts: TileSet,
@@ -48,14 +57,7 @@ impl GameState {
 
         Ok(GameState {
             ts,
-            map: generate_map::<Nystrom>(MapGenOptions::new(
-                MAP_WIDTH,
-                MAP_HEIGHT,
-                ROOM_WIDTH,
-                ROOM_HEIGHT,
-                0,
-                1,
-            )),
+            map: generate_map::<Simple>(MAP_GEN_OPTIONS),
             menu_on: false,
             menu_cursor_y: 0,
         })
@@ -150,14 +152,7 @@ impl event::EventHandler for GameState {
                 #[cfg(debug_assertions)]
                 let time = std::time::Instant::now();
 
-                self.map = generate_map::<Nystrom>(MapGenOptions::new(
-                    MAP_WIDTH,
-                    MAP_HEIGHT,
-                    ROOM_WIDTH,
-                    ROOM_HEIGHT,
-                    0,
-                    1,
-                ));
+                self.map = generate_map::<Simple>(MAP_GEN_OPTIONS);
 
                 debugln!("Generation took: {} μs", time.elapsed().subsec_micros());
             } else if let event::Keycode::M = keycode {
