@@ -115,10 +115,16 @@ impl TileType {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Coords<T> {
     pub x: T,
     pub y: T,
+}
+
+impl<T> Coords<T> {
+    pub fn new(x: T, y: T) -> Coords<T> {
+        Coords { x, y }
+    }
 }
 
 impl<

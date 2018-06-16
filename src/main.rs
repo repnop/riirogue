@@ -19,7 +19,7 @@ use ggez::{
 
 use helpers::clamp;
 use map::{
-    generation::{generate_map, MapGenOptions, Simple}, Map,
+    generation::{generate_map, MapGenOptions, Simple}, Coords, Map,
 };
 use std::{env, path};
 use tileset::TileSet;
@@ -30,6 +30,9 @@ const TILE_SIZE: u32 = 16;
 const ROOM_WIDTH: std::ops::Range<u32> = 4..8;
 const ROOM_HEIGHT: std::ops::Range<u32> = 4..8;
 const SCALE_FACTOR: f32 = 0.5;
+const DISPLAY_SCALE_FACTOR: f32 = 1.5;
+const DISPLAY_MAP_WIDTH: u32 = (TILES_X as f32 / DISPLAY_SCALE_FACTOR) as u32;
+const DISPLAY_MAP_HEIGHT: u32 = (TILES_Y as f32 / DISPLAY_SCALE_FACTOR) as u32;
 const MAP_WIDTH: u32 = (TILES_X as f32 / SCALE_FACTOR) as u32;
 const MAP_HEIGHT: u32 = (TILES_Y as f32 / SCALE_FACTOR) as u32;
 const MAP_GEN_OPTIONS: MapGenOptions = MapGenOptions {
@@ -46,12 +49,14 @@ struct GameState {
     map: Map,
     menu_on: bool,
     menu_cursor_y: u32,
+    camera_position: Coords<u32>,
+    player_position: Coords<u32>,
 }
 
 impl GameState {
     fn new(ctx: &mut Context) -> GameResult<GameState> {
         let image = graphics::Image::new(ctx, "/font_16.png")?;
-        let mut ts = TileSet::new(image, (32, 8), (16, 16), SCALE_FACTOR);
+        let mut ts = TileSet::new(image, (32, 8), (16, 16), DISPLAY_SCALE_FACTOR);
 
         constants::register_tiles(&mut ts).unwrap();
 
@@ -60,6 +65,8 @@ impl GameState {
             map: generate_map::<Simple>(MAP_GEN_OPTIONS),
             menu_on: false,
             menu_cursor_y: 0,
+            camera_position: Coords::new(0, 0),
+            player_position: Coords::new(0, 0),
         })
     }
 
@@ -91,7 +98,7 @@ impl GameState {
 
         self.ts
             .queue_rect(
-                "solid_block",
+                "solid",
                 top_left,
                 (TILES_X, TILES_Y / 2),
                 Some(graphics::Color::from_rgba(0x00, 0x00, 0x00, 0xFA)),
@@ -116,14 +123,32 @@ impl GameState {
 
 impl event::EventHandler for GameState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        for tile in self.map.iter().filter(|t| !t.tile_type.is_empty()) {
-            if let Err(e) =
-                self.ts
-                    .queue_tile(tile.tile_type.name(), (tile.pos.x, tile.pos.y), tile.color)
-            {
-                println!("Tile \"{}\" not found", e);
+        let camera_position = self.camera_position;
+        let player_position = self.player_position;
+
+        for tile in self.map.iter().filter(|t| {
+            t.pos.x >= camera_position.x && t.pos.y >= camera_position.y && !t.tile_type.is_empty()
+        }) {
+            let draw_x = tile.pos.x - camera_position.x;
+            let draw_y = tile.pos.y - camera_position.y;
+
+            if Coords::new(draw_x, draw_y) != player_position {
+                if let Err(e) =
+                    self.ts
+                        .queue_tile(tile.tile_type.name(), (draw_x, draw_y), tile.color)
+                {
+                    println!("Tile \"{}\" not found", e);
+                }
             }
         }
+
+        self.ts
+            .queue_tile(
+                constants::TILE_CAP_P.name,
+                (player_position.x, player_position.y),
+                None,
+            )
+            .unwrap();
 
         if self.menu_on {
             self.draw_menu();
@@ -154,18 +179,41 @@ impl event::EventHandler for GameState {
 
                 self.map = generate_map::<Simple>(MAP_GEN_OPTIONS);
 
-                debugln!("Generation took: {} μs", time.elapsed().subsec_micros());
+                debugln!("Generation took: {} ms", time.elapsed().subsec_millis());
             } else if let event::Keycode::M = keycode {
                 self.menu_on = !self.menu_on;
             } else if let event::Keycode::Down = keycode {
-                if self.menu_cursor_y + 1 > 5 {
-                    self.menu_cursor_y = 0;
-                } else {
-                    self.menu_cursor_y = clamp(self.menu_cursor_y + 1, 0, 5);
+                if self.menu_on {
+                    if self.menu_cursor_y + 1 > 5 {
+                        self.menu_cursor_y = 0;
+                    } else {
+                        self.menu_cursor_y = clamp(self.menu_cursor_y + 1, 0, 5);
+                    }
                 }
             } else if let event::Keycode::Up = keycode {
-                self.menu_cursor_y = clamp(self.menu_cursor_y - 1, 0, 5);
+                if self.menu_on {
+                    self.menu_cursor_y = clamp(self.menu_cursor_y - 1, 0, 5);
+                }
             }
+        }
+
+        if let event::Keycode::Left = keycode {
+            if self.camera_position.x > 0 {
+                self.camera_position.x -= 1;
+            }
+        } else if let event::Keycode::Right = keycode {
+            self.camera_position.x =
+                clamp(self.camera_position.x + 1, 0, MAP_WIDTH - DISPLAY_MAP_WIDTH);
+        } else if let event::Keycode::Up = keycode {
+            if self.camera_position.y > 0 {
+                self.camera_position.y -= 1;
+            }
+        } else if let event::Keycode::Down = keycode {
+            self.camera_position.y = clamp(
+                self.camera_position.y + 1,
+                0,
+                MAP_HEIGHT - DISPLAY_MAP_HEIGHT,
+            );
         }
     }
 }

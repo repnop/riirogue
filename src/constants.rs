@@ -488,8 +488,8 @@ pub const TILE_ROOM_SOLID: TileDecl = TileDecl {
 };
 pub const TILE_PATH: TileDecl = TileDecl {
     name: "path",
-    x: 11,
-    y: 1,
+    x: 27,
+    y: 6,
 };
 
 const TILES: [TileDecl; 96] = [

@@ -121,9 +121,12 @@ impl MapGen for Simple {
             );
 
             let color = Color::from_rgb(
-                thread_rng().gen_range(0, 255),
-                thread_rng().gen_range(0, 255),
-                thread_rng().gen_range(0, 255),
+                //thread_rng().gen_range(0, 255),
+                //thread_rng().gen_range(0, 255),
+                //thread_rng().gen_range(0, 255),
+                0,
+                0,
+                0,
             );
 
             if let Some(path) = path {
