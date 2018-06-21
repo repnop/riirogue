@@ -2,14 +2,14 @@ use rand::{distributions::Uniform, Rng};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rect {
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 impl Rect {
-    pub fn new(x: u32, y: u32, width: u32, height: u32) -> Rect {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Rect {
         Rect {
             x,
             y,
@@ -18,11 +18,12 @@ impl Rect {
         }
     }
 
-    pub fn contains(&self, (x, y): (u32, u32)) -> bool {
+    #[allow(dead_code)]
+    pub fn contains(&self, (x, y): (i32, i32)) -> bool {
         (x >= self.left() && x <= self.right()) && (y >= self.top() && y <= self.bottom())
     }
 
-    pub fn center(&self) -> (u32, u32) {
+    pub fn center(&self) -> (i32, i32) {
         (self.x + self.width / 2, self.y + self.height / 2)
     }
 
@@ -31,11 +32,11 @@ impl Rect {
             || self.bottom() < other.top())
     }
 
-    pub fn intersects_with_buffer(&self, other: &Rect, buffer: u32) -> bool {
+    pub fn intersects_with_buffer(&self, other: &Rect, buffer: i32) -> bool {
         self.buffer(buffer).intersects(&other.buffer(buffer))
     }
 
-    pub fn buffer(&self, buffer: u32) -> Rect {
+    pub fn buffer(&self, buffer: i32) -> Rect {
         Rect::new(
             clamp(self.x - buffer, 0, self.x),
             clamp(self.y - buffer, 0, self.y),
@@ -44,36 +45,28 @@ impl Rect {
         )
     }
 
-    pub fn x(&self) -> u32 {
+    pub fn left(&self) -> i32 {
         self.x
     }
 
-    pub fn left(&self) -> u32 {
-        self.x
-    }
-
-    pub fn right(&self) -> u32 {
+    pub fn right(&self) -> i32 {
         self.x + self.width
     }
 
-    pub fn y(&self) -> u32 {
+    pub fn top(&self) -> i32 {
         self.y
     }
 
-    pub fn top(&self) -> u32 {
-        self.y
-    }
-
-    pub fn bottom(&self) -> u32 {
+    pub fn bottom(&self) -> i32 {
         self.y + self.height
     }
 
     pub fn random_rect(
         rng: &mut impl Rng,
-        x_uniform: &Uniform<u32>,
-        y_uniform: &Uniform<u32>,
-        w_uniform: &Uniform<u32>,
-        h_uniform: &Uniform<u32>,
+        x_uniform: &Uniform<i32>,
+        y_uniform: &Uniform<i32>,
+        w_uniform: &Uniform<i32>,
+        h_uniform: &Uniform<i32>,
     ) -> Rect {
         use rand::distributions::Distribution;
 
@@ -93,5 +86,36 @@ pub fn clamp<T: PartialOrd>(x: T, min: T, max: T) -> T {
         min
     } else {
         x
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Coords {
+    pub x: i32,
+    pub y: i32,
+}
+
+impl Coords {
+    pub fn new(x: i32, y: i32) -> Coords {
+        Coords { x, y }
+    }
+}
+
+impl Coords {
+    #[allow(dead_code)]
+    fn distance(&self, other: Coords) -> i32 {
+        (self.x - other.x).abs() + (self.y - other.y).abs()
+    }
+}
+
+impl From<(i32, i32)> for Coords {
+    fn from((x, y): (i32, i32)) -> Coords {
+        Coords { x, y }
+    }
+}
+
+impl<'a> From<&'a (i32, i32)> for Coords {
+    fn from(&(x, y): &(i32, i32)) -> Coords {
+        Coords { x, y }
     }
 }

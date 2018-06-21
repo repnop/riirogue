@@ -2,8 +2,8 @@ use tileset::TileSet;
 
 pub struct TileDecl {
     pub name: &'static str,
-    pub x: u32,
-    pub y: u32,
+    pub x: i32,
+    pub y: i32,
 }
 
 pub const TILE_SPACE: TileDecl = TileDecl {
@@ -491,8 +491,13 @@ pub const TILE_PATH: TileDecl = TileDecl {
     x: 27,
     y: 6,
 };
+pub const TILE_DOOR: TileDecl = TileDecl {
+    name: "door",
+    x: 15,
+    y: 7,
+};
 
-const TILES: [TileDecl; 96] = [
+const TILES: [TileDecl; 97] = [
     TILE_SPACE,
     TILE_CAP_A,
     TILE_CAP_B,
@@ -589,6 +594,7 @@ const TILES: [TileDecl; 96] = [
     TILE_ROOM_GRASS,
     TILE_ROOM_SOLID,
     TILE_PATH,
+    TILE_DOOR,
 ];
 
 pub fn register_tiles(ts: &mut TileSet) -> Result<(), ()> {

@@ -15,8 +15,8 @@ pub struct TileSet {
 impl TileSet {
     pub fn new(
         image: Image,
-        dimensions: (u32, u32),
-        tile_size: (u32, u32),
+        dimensions: (i32, i32),
+        tile_size: (i32, i32),
         scale_factor: f32,
     ) -> TileSet {
         let sprite_batch = SpriteBatch::new(image);
@@ -30,7 +30,7 @@ impl TileSet {
         }
     }
 
-    pub fn register_tile(&mut self, name: &'static str, coords: (u32, u32)) -> Result<(), ()> {
+    pub fn register_tile(&mut self, name: &'static str, coords: (i32, i32)) -> Result<(), ()> {
         if coords.0 as f32 > self.dimensions.0 || coords.1 as f32 > self.dimensions.1 {
             return Err(());
         }
@@ -44,7 +44,7 @@ impl TileSet {
     pub fn queue_tile<'a>(
         &mut self,
         name: &'a str,
-        coords: (u32, u32),
+        coords: (i32, i32),
         color: Option<graphics::Color>,
     ) -> Result<(), &'a str> {
         let tile = self.tile_names.get(name).ok_or(name)?;
@@ -73,8 +73,8 @@ impl TileSet {
     pub fn queue_rect<'a>(
         &mut self,
         name: &'a str,
-        origin: (u32, u32),
-        size: (u32, u32),
+        origin: (i32, i32),
+        size: (i32, i32),
         color: Option<graphics::Color>,
     ) -> Result<(), &'a str> {
         let tile = self.tile_names.get(name).ok_or(name)?;

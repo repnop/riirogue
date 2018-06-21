@@ -2,24 +2,20 @@ pub mod generation;
 mod pathfinding;
 
 use constants::*;
-use ggez::{
-    error::GameResult, graphics::{Color, DrawParam}, Context,
-};
-use helpers::Rect;
-use pathfinding::utils::absdiff;
+use ggez::graphics::Color;
+use helpers::{Coords, Rect};
 use rand::{
     distributions::{Distribution, Weighted, WeightedChoice}, thread_rng,
 };
-use std::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
+use std::ops::{Deref, DerefMut};
 
 pub struct Map {
     tiles: Vec<Tile>,
-    width: u32,
-    height: u32,
+    width: i32,
 }
 
 impl Map {
-    pub fn new(width: u32, height: u32) -> Map {
+    pub fn new(width: i32, height: i32) -> Map {
         Map {
             tiles: (0..=width)
                 .flat_map(|x| {
@@ -31,11 +27,10 @@ impl Map {
                 })
                 .collect(),
             width,
-            height,
         }
     }
 
-    pub fn tile_at<T: Into<Coords<u32>>>(&self, coords: T) -> Option<Tile> {
+    pub fn tile_at<T: Into<Coords>>(&self, coords: T) -> Option<Tile> {
         let coords = coords.into();
 
         self.tiles
@@ -84,9 +79,12 @@ impl TileType {
         use self::TileType::*;
 
         match self {
-            BlankRoomFloor | HeavyScatterRoomFloor | LightScatterRoomFloor | Grass | Pathway => {
-                true
-            }
+            BlankRoomFloor
+            | HeavyScatterRoomFloor
+            | LightScatterRoomFloor
+            | Grass
+            | Pathway
+            | Door => true,
             _ => false,
         }
     }
@@ -111,53 +109,20 @@ impl TileType {
             LightScatterRoomFloor => TILE_ROOM_FLRSCLGT.name,
             Pathway => TILE_PATH.name,
             Wall => TILE_ROOM_WALL.name,
-            Door => TILE_CAP_R.name,
+            Door => TILE_DOOR.name,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Coords<T> {
-    pub x: T,
-    pub y: T,
-}
-
-impl<T> Coords<T> {
-    pub fn new(x: T, y: T) -> Coords<T> {
-        Coords { x, y }
-    }
-}
-
-impl<
-        T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T> + Copy + PartialOrd,
-    > Coords<T>
-{
-    fn distance(&self, other: Coords<T>) -> T {
-        absdiff(self.x, other.x) + absdiff(self.y, other.y)
-    }
-}
-
-impl<T> From<(T, T)> for Coords<T> {
-    fn from((x, y): (T, T)) -> Coords<T> {
-        Coords { x, y }
-    }
-}
-
-impl<'a, T: Copy> From<&'a (T, T)> for Coords<T> {
-    fn from(&(x, y): &(T, T)) -> Coords<T> {
-        Coords { x, y }
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct Tile {
-    pub pos: Coords<u32>,
+    pub pos: Coords,
     pub tile_type: TileType,
     pub color: Option<Color>,
 }
 
 impl Tile {
-    fn new<T: Into<Coords<u32>>>(tile_type: TileType, pos: T, color: Option<Color>) -> Tile {
+    fn new<T: Into<Coords>>(tile_type: TileType, pos: T, color: Option<Color>) -> Tile {
         Tile {
             pos: pos.into(),
             tile_type,
@@ -195,7 +160,13 @@ impl Tile {
                 if x == room.left() || x == room.right() || y == room.top() || y == room.bottom() {
                     tiles.push(Tile::new(TileType::Wall, (x, y), None));
                 } else {
-                    tiles.push(Tile::new(tile_picker.sample(&mut rng), (x, y), None));
+                    let tile = tile_picker.sample(&mut rng);
+
+                    if tile == TileType::Grass {
+                        tiles.push(Tile::new(tile, (x, y), Some(Color::from_rgb(0, 127, 0))));
+                    } else {
+                        tiles.push(Tile::new(tile, (x, y), None));
+                    }
                 }
             }
         }
