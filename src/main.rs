@@ -17,24 +17,24 @@ use ggez::{
     conf::{self, WindowMode}, event, graphics, Context, GameResult,
 };
 
-use helpers::clamp;
+use helpers::{clamp, Coords};
 use map::{
-    generation::{generate_map, MapGenOptions, Simple}, Coords, Map,
+    generation::{generate_map, MapGenOptions, Simple}, Map,
 };
 use std::{env, path};
 use tileset::TileSet;
 
-const TILES_X: u32 = 50;
-const TILES_Y: u32 = 40;
-const TILE_SIZE: u32 = 16;
-const ROOM_WIDTH: std::ops::Range<u32> = 4..8;
-const ROOM_HEIGHT: std::ops::Range<u32> = 4..8;
+const TILES_X: i32 = 50;
+const TILES_Y: i32 = 40;
+const TILE_SIZE: i32 = 16;
+const ROOM_WIDTH: std::ops::Range<i32> = 4..8;
+const ROOM_HEIGHT: std::ops::Range<i32> = 4..8;
 const SCALE_FACTOR: f32 = 0.5;
 const DISPLAY_SCALE_FACTOR: f32 = 1.5;
-const DISPLAY_MAP_WIDTH: u32 = (TILES_X as f32 / DISPLAY_SCALE_FACTOR) as u32;
-const DISPLAY_MAP_HEIGHT: u32 = (TILES_Y as f32 / DISPLAY_SCALE_FACTOR) as u32;
-const MAP_WIDTH: u32 = (TILES_X as f32 / SCALE_FACTOR) as u32;
-const MAP_HEIGHT: u32 = (TILES_Y as f32 / SCALE_FACTOR) as u32;
+const DISPLAY_MAP_WIDTH: i32 = (TILES_X as f32 / DISPLAY_SCALE_FACTOR) as i32;
+const DISPLAY_MAP_HEIGHT: i32 = (TILES_Y as f32 / DISPLAY_SCALE_FACTOR) as i32;
+const MAP_WIDTH: i32 = (TILES_X as f32 / SCALE_FACTOR) as i32;
+const MAP_HEIGHT: i32 = (TILES_Y as f32 / SCALE_FACTOR) as i32;
 const MAP_GEN_OPTIONS: MapGenOptions = MapGenOptions {
     map_width: MAP_WIDTH,
     map_height: MAP_HEIGHT,
@@ -48,9 +48,8 @@ struct GameState {
     ts: TileSet,
     map: Map,
     menu_on: bool,
-    menu_cursor_y: u32,
-    camera_position: Coords<u32>,
-    player_position: Coords<u32>,
+    menu_cursor_y: i32,
+    player_position: Coords,
 }
 
 impl GameState {
@@ -59,18 +58,27 @@ impl GameState {
         let mut ts = TileSet::new(image, (32, 8), (16, 16), DISPLAY_SCALE_FACTOR);
 
         constants::register_tiles(&mut ts).unwrap();
+        let map = generate_map::<Simple>(MAP_GEN_OPTIONS);
+        let player_position = (|| {
+            for tile in map.iter() {
+                if tile.tile_type.is_walkable_tile() {
+                    return Coords::new(tile.pos.x, tile.pos.y);
+                }
+            }
+
+            Coords::new(0, 0)
+        })();
 
         Ok(GameState {
             ts,
-            map: generate_map::<Simple>(MAP_GEN_OPTIONS),
+            map,
             menu_on: false,
             menu_cursor_y: 0,
-            camera_position: Coords::new(0, 0),
-            player_position: Coords::new(0, 0),
+            player_position,
         })
     }
 
-    fn draw_string(&mut self, text: &str, origin: (u32, u32), color: Option<graphics::Color>) {
+    fn draw_string(&mut self, text: &str, origin: (i32, i32), color: Option<graphics::Color>) {
         let mut s = String::with_capacity(1);
         let mut origin_offset = 0;
 
@@ -82,7 +90,6 @@ impl GameState {
             {
                 println!("`{}` not found", s);
             }
-            //.unwrap();
 
             origin_offset += 1;
             s.pop();
@@ -90,10 +97,10 @@ impl GameState {
     }
 
     fn draw_menu(&mut self) {
-        let center = (0, (TILES_Y as f32 / SCALE_FACTOR) as u32 / 2);
+        let center = (0, (TILES_Y as f32 / SCALE_FACTOR) as i32 / 2);
         let top_left = (
             center.0,
-            center.1 - (TILES_Y as f32 / SCALE_FACTOR) as u32 / 4,
+            center.1 - (TILES_Y as f32 / SCALE_FACTOR) as i32 / 4,
         );
 
         self.ts
@@ -123,8 +130,25 @@ impl GameState {
 
 impl event::EventHandler for GameState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        let camera_position = self.camera_position;
         let player_position = self.player_position;
+
+        let camera_position = Coords::new(
+            clamp(
+                player_position.x - DISPLAY_MAP_WIDTH / 2,
+                0,
+                DISPLAY_MAP_WIDTH * 2,
+            ),
+            clamp(
+                player_position.y - DISPLAY_MAP_HEIGHT / 2,
+                0,
+                DISPLAY_MAP_HEIGHT * 2,
+            ),
+        );
+
+        let player_position = Coords::new(
+            player_position.x - camera_position.x,
+            player_position.y - camera_position.y,
+        );
 
         for tile in self.map.iter().filter(|t| {
             t.pos.x >= camera_position.x && t.pos.y >= camera_position.y && !t.tile_type.is_empty()
@@ -132,7 +156,9 @@ impl event::EventHandler for GameState {
             let draw_x = tile.pos.x - camera_position.x;
             let draw_y = tile.pos.y - camera_position.y;
 
-            if Coords::new(draw_x, draw_y) != player_position {
+            if tile.tile_type == map::TileType::Pathway
+                || Coords::new(draw_x, draw_y) != player_position
+            {
                 if let Err(e) =
                     self.ts
                         .queue_tile(tile.tile_type.name(), (draw_x, draw_y), tile.color)
@@ -158,6 +184,7 @@ impl event::EventHandler for GameState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+        graphics::set_background_color(ctx, graphics::Color::from_rgba(0, 0, 0, 1));
         graphics::clear(ctx);
         self.ts.render(ctx)?;
         self.ts.clear_queue();
@@ -198,22 +225,37 @@ impl event::EventHandler for GameState {
         }
 
         if let event::Keycode::Left = keycode {
-            if self.camera_position.x > 0 {
-                self.camera_position.x -= 1;
+            if let Some(tile) = self.map
+                .tile_at((self.player_position.x - 1, self.player_position.y))
+            {
+                if tile.tile_type.is_walkable_tile() {
+                    self.player_position.x -= 1;
+                }
             }
         } else if let event::Keycode::Right = keycode {
-            self.camera_position.x =
-                clamp(self.camera_position.x + 1, 0, MAP_WIDTH - DISPLAY_MAP_WIDTH);
+            if let Some(tile) = self.map
+                .tile_at((self.player_position.x + 1, self.player_position.y))
+            {
+                if tile.tile_type.is_walkable_tile() {
+                    self.player_position.x += 1;
+                }
+            }
         } else if let event::Keycode::Up = keycode {
-            if self.camera_position.y > 0 {
-                self.camera_position.y -= 1;
+            if let Some(tile) = self.map
+                .tile_at((self.player_position.x, self.player_position.y - 1))
+            {
+                if tile.tile_type.is_walkable_tile() {
+                    self.player_position.y -= 1;
+                }
             }
         } else if let event::Keycode::Down = keycode {
-            self.camera_position.y = clamp(
-                self.camera_position.y + 1,
-                0,
-                MAP_HEIGHT - DISPLAY_MAP_HEIGHT,
-            );
+            if let Some(tile) = self.map
+                .tile_at((self.player_position.x, self.player_position.y + 1))
+            {
+                if tile.tile_type.is_walkable_tile() {
+                    self.player_position.y += 1;
+                }
+            }
         }
     }
 }
@@ -221,15 +263,15 @@ impl event::EventHandler for GameState {
 fn main() {
     let c = conf::Conf {
         window_mode: WindowMode {
-            width: TILES_X * TILE_SIZE,
-            height: TILES_Y * TILE_SIZE,
+            width: (TILES_X * TILE_SIZE) as u32,
+            height: (TILES_Y * TILE_SIZE) as u32,
             borderless: false,
             fullscreen_type: conf::FullscreenType::Off,
             vsync: true,
-            max_width: TILES_X * TILE_SIZE,
-            max_height: TILES_Y * TILE_SIZE,
-            min_width: TILES_X * TILE_SIZE,
-            min_height: TILES_Y * TILE_SIZE,
+            max_width: (TILES_X * TILE_SIZE) as u32,
+            max_height: (TILES_Y * TILE_SIZE) as u32,
+            min_width: (TILES_X * TILE_SIZE) as u32,
+            min_height: (TILES_Y * TILE_SIZE) as u32,
         },
         window_setup: conf::WindowSetup::default(),
         backend: conf::Backend::OpenGL { major: 3, minor: 2 },
