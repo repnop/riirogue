@@ -11,7 +11,6 @@ use rand::{
     distributions::{Distribution, Weighted, WeightedChoice}, thread_rng,
 };
 use std::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
-use tileset::TileSet;
 
 pub struct Map {
     tiles: Vec<Tile>,
@@ -81,11 +80,13 @@ impl TileType {
         }
     }
 
-    pub fn is_path_tile(&self) -> bool {
+    pub fn is_walkable_tile(&self) -> bool {
         use self::TileType::*;
 
         match self {
-            Pathway => true,
+            BlankRoomFloor | HeavyScatterRoomFloor | LightScatterRoomFloor | Grass | Pathway => {
+                true
+            }
             _ => false,
         }
     }
