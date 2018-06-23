@@ -89,7 +89,7 @@ pub fn clamp<T: PartialOrd>(x: T, min: T, max: T) -> T {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Coords {
     pub x: i32,
     pub y: i32,

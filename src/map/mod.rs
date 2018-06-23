@@ -2,6 +2,7 @@ pub mod generation;
 mod pathfinding;
 
 use constants::*;
+use entities;
 use ggez::graphics::Color;
 use helpers::{Coords, Rect};
 use rand::{
@@ -12,6 +13,8 @@ use std::ops::{Deref, DerefMut};
 pub struct Map {
     tiles: Vec<Tile>,
     width: i32,
+    pub items: Vec<(Coords, Box<entities::Item>)>,
+    pub monsters: Vec<Box<entities::Creature>>,
 }
 
 impl Map {
@@ -27,7 +30,61 @@ impl Map {
                 })
                 .collect(),
             width,
+            items: Vec::new(),
+            monsters: Vec::new(),
         }
+    }
+
+    pub fn add_item<I: entities::Item + 'static>(&mut self, coords: Coords, item: I) {
+        self.items.push((coords, Box::new(item)));
+    }
+
+    pub fn add_creature<C: entities::Creature + 'static>(&mut self, creature: C) {
+        self.monsters.push(Box::new(creature));
+    }
+
+    pub fn draw<F>(
+        &self,
+        tileset: &mut super::tileset::TileSet,
+        filter: F,
+        camera: Coords,
+    ) -> Result<(), &str>
+    where
+        for<'r> F: FnMut(&'r &super::map::Tile) -> bool,
+    {
+        for tile in self.tiles.iter().filter(filter) {
+            let draw_x = tile.pos.x - camera.x;
+            let draw_y = tile.pos.y - camera.y;
+
+            tileset.queue_tile(tile.tile_type.name(), (draw_x, draw_y), tile.color)?;
+        }
+
+        for (pos, item) in self.items.iter().filter(|(pos, _)| pos >= &camera) {
+            let draw_x = pos.x - camera.x;
+            let draw_y = pos.y - camera.y;
+
+            tileset.queue_tile(
+                item.tile_name(),
+                (draw_x, draw_y),
+                Some(Color::from_rgb(229, 191, 0)),
+            )?;
+        }
+
+        for monster in self.monsters.iter().filter(|m| m.pos() >= camera) {
+            let pos = monster.pos();
+            let draw_x = pos.x - camera.x;
+            let draw_y = pos.y - camera.y;
+
+            tileset.queue_tile_with_background(
+                "solid",
+                monster.tile_name(),
+                (draw_x, draw_y),
+                Some(Color::from_rgb(0, 0, 0)),
+                Some(Color::from_rgb(127, 255, 0)),
+            )?;
+        }
+
+        Ok(())
     }
 
     pub fn tile_at<T: Into<Coords>>(&self, coords: T) -> Option<Tile> {

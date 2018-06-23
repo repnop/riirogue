@@ -9,14 +9,15 @@ macro_rules! debugln {
 }
 
 mod constants;
+mod entities;
 mod helpers;
 mod map;
 mod tileset;
 
+use entities::Player;
 use ggez::{
     conf::{self, WindowMode}, event, graphics, Context, GameResult,
 };
-
 use helpers::{clamp, Coords};
 use map::{
     generation::{generate_map, MapGenOptions, Simple}, Map,
@@ -30,7 +31,7 @@ const TILE_SIZE: i32 = 16;
 const ROOM_WIDTH: std::ops::Range<i32> = 4..8;
 const ROOM_HEIGHT: std::ops::Range<i32> = 4..8;
 const SCALE_FACTOR: f32 = 0.5;
-const DISPLAY_SCALE_FACTOR: f32 = 1.5;
+const DISPLAY_SCALE_FACTOR: f32 = 1.25;
 const DISPLAY_MAP_WIDTH: i32 = (TILES_X as f32 / DISPLAY_SCALE_FACTOR) as i32;
 const DISPLAY_MAP_HEIGHT: i32 = (TILES_Y as f32 / DISPLAY_SCALE_FACTOR) as i32;
 const MAP_WIDTH: i32 = (TILES_X as f32 / SCALE_FACTOR) as i32;
@@ -44,12 +45,54 @@ const MAP_GEN_OPTIONS: MapGenOptions = MapGenOptions {
     room_buffer: 2,
 };
 
+#[derive(Debug, Clone, Copy)]
+enum EventType {
+    Combat,
+    Healing,
+    Item,
+}
+
+impl EventType {
+    fn icon(&self) -> &'static str {
+        use self::EventType::*;
+
+        match self {
+            Combat => "axe",
+            Healing => "potion",
+            Item => "$",
+        }
+    }
+
+    fn color(&self) -> graphics::Color {
+        use self::EventType::*;
+
+        match self {
+            Combat => graphics::Color::from_rgb(191, 0, 0),
+            Healing => graphics::Color::from_rgb(0, 191, 0),
+            Item => graphics::Color::from_rgb(191, 191, 0),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Event {
+    msg: String,
+    ty: EventType,
+}
+
+impl Event {
+    fn new(msg: String, ty: EventType) -> Event {
+        Event { msg, ty }
+    }
+}
+
 struct GameState {
     ts: TileSet,
     map: Map,
     menu_on: bool,
     menu_cursor_y: i32,
-    player_position: Coords,
+    player: Player,
+    events: Vec<Event>,
 }
 
 impl GameState {
@@ -74,7 +117,8 @@ impl GameState {
             map,
             menu_on: false,
             menu_cursor_y: 0,
-            player_position,
+            player: Player::new(player_position),
+            events: Vec::new(),
         })
     }
 
@@ -85,14 +129,42 @@ impl GameState {
         for c in text.chars() {
             s.push(c);
 
-            if let Err(s) = self.ts
-                .queue_tile(&s, (origin.0 + origin_offset, origin.1), color)
-            {
+            if let Err(s) = self.ts.queue_tile_with_background(
+                "solid",
+                &s,
+                (origin.0 + origin_offset, origin.1),
+                Some(graphics::Color::from_rgba(0, 0, 0, 0xFF)),
+                color,
+            ) {
                 println!("`{}` not found", s);
             }
 
             origin_offset += 1;
             s.pop();
+        }
+    }
+
+    fn draw_events(&mut self) {
+        let events: Vec<_> = self.events
+            .iter()
+            .rev()
+            .take(5)
+            .map(|s| s.clone())
+            .collect();
+        for (i, event) in events.into_iter().enumerate() {
+            self.draw_string("[", (0, DISPLAY_MAP_HEIGHT - (5 - i as i32)), None);
+            self.ts
+                .queue_tile_with_background(
+                    "solid",
+                    event.ty.icon(),
+                    (1, DISPLAY_MAP_HEIGHT - (5 - i as i32)),
+                    Some(graphics::Color::from_rgba(0, 0, 0, 0xFF)),
+                    Some(event.ty.color()),
+                )
+                .unwrap();
+            self.draw_string("]", (2, DISPLAY_MAP_HEIGHT - (5 - i as i32)), None);
+
+            self.draw_string(&event.msg, (3, DISPLAY_MAP_HEIGHT - (5 - i as i32)), None);
         }
     }
 
@@ -130,7 +202,7 @@ impl GameState {
 
 impl event::EventHandler for GameState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        let player_position = self.player_position;
+        let player_position = self.player.pos;
 
         let camera_position = Coords::new(
             clamp(
@@ -145,36 +217,34 @@ impl event::EventHandler for GameState {
             ),
         );
 
+        self.map
+            .draw(
+                &mut self.ts,
+                |t| {
+                    t.pos >= camera_position && !t.tile_type.is_empty()
+                        && (t.tile_type == map::TileType::Pathway || t.pos != player_position)
+                },
+                camera_position,
+            )
+            .unwrap();
+
         let player_position = Coords::new(
             player_position.x - camera_position.x,
             player_position.y - camera_position.y,
         );
 
-        for tile in self.map.iter().filter(|t| {
-            t.pos.x >= camera_position.x && t.pos.y >= camera_position.y && !t.tile_type.is_empty()
-        }) {
-            let draw_x = tile.pos.x - camera_position.x;
-            let draw_y = tile.pos.y - camera_position.y;
-
-            if tile.tile_type == map::TileType::Pathway
-                || Coords::new(draw_x, draw_y) != player_position
-            {
-                if let Err(e) =
-                    self.ts
-                        .queue_tile(tile.tile_type.name(), (draw_x, draw_y), tile.color)
-                {
-                    println!("Tile \"{}\" not found", e);
-                }
-            }
-        }
-
         self.ts
             .queue_tile(
-                constants::TILE_CAP_P.name,
+                constants::TILE_SPEC_AT.name,
                 (player_position.x, player_position.y),
                 None,
             )
             .unwrap();
+
+        let hp = self.player.hp;
+        self.draw_string(&format!("HP: {}", hp), (0, 0), None);
+
+        self.draw_events();
 
         if self.menu_on {
             self.draw_menu();
@@ -199,6 +269,8 @@ impl event::EventHandler for GameState {
         _: event::Mod,
         repeat: bool,
     ) {
+        use entities::Creature;
+
         if !repeat {
             if let event::Keycode::R = keycode {
                 #[cfg(debug_assertions)]
@@ -221,39 +293,209 @@ impl event::EventHandler for GameState {
                 if self.menu_on {
                     self.menu_cursor_y = clamp(self.menu_cursor_y - 1, 0, 5);
                 }
+            } else if let event::Keycode::H = keycode {
+                let Coords { x: p_x, y: p_y } = self.player.pos;
+
+                if let Some(tile) = self.map.tile_at((p_x + 1, p_y)) {
+                    self.map.add_item(tile.pos, entities::HealingPotion {});
+                }
+            } else if let event::Keycode::U = keycode {
+                if let Some(pos) = self.player.inv.iter().position(|i| i.id() == 0) {
+                    let p_hp = self.player.hp;
+                    self.player.inv.remove(pos).consume(&mut self.player);
+                    self.events.push(Event::new(
+                        format!("Player gained {} HP.", self.player.hp - p_hp),
+                        EventType::Healing,
+                    ));
+                }
+            } else if let event::Keycode::G = keycode {
+                let Coords { x: p_x, y: p_y } = self.player.pos;
+
+                if let Some(tile) = self.map.tile_at((p_x + 1, p_y)) {
+                    self.map.add_creature(entities::Goblin::new(tile.pos));
+                }
             }
         }
 
         if let event::Keycode::Left = keycode {
-            if let Some(tile) = self.map
-                .tile_at((self.player_position.x - 1, self.player_position.y))
-            {
-                if tile.tile_type.is_walkable_tile() {
-                    self.player_position.x -= 1;
+            if let Some(tile) = self.map.tile_at((self.player.pos.x - 1, self.player.pos.y)) {
+                if let Some(pos) = self.map
+                    .monsters
+                    .iter_mut()
+                    .position(|m| m.pos() == tile.pos)
+                {
+                    let dead = {
+                        let monster = self.map.monsters.get_mut(pos).unwrap();
+
+                        let m_prev_hp = monster.hp();
+                        let p_prev_hp = self.player.hp;
+
+                        self.player.deal_damage(&mut **monster);
+
+                        self.events.push(Event::new(
+                            format!("Monster took {} damage.", m_prev_hp - monster.hp()),
+                            EventType::Combat,
+                        ));
+                        monster.deal_damage(&mut self.player);
+
+                        self.events.push(Event::new(
+                            format!("Player took {} damage.", p_prev_hp - self.player.hp),
+                            EventType::Combat,
+                        ));
+
+                        monster.is_dead()
+                    };
+
+                    if dead {
+                        self.map.monsters.remove(pos);
+                        self.events
+                            .push(Event::new(String::from("Monster died."), EventType::Combat));
+                    }
+                } else if tile.tile_type.is_walkable_tile() {
+                    self.player.pos.x -= 1;
+
+                    let pos = self.player.pos;
+
+                    while let Some(pos) = self.map.items.iter().position(|(p, _)| p == &pos) {
+                        self.player.inv.push(self.map.items.remove(pos).1);
+                        self.events
+                            .push(Event::new(String::from("Picked up item."), EventType::Item));
+                    }
                 }
             }
         } else if let event::Keycode::Right = keycode {
-            if let Some(tile) = self.map
-                .tile_at((self.player_position.x + 1, self.player_position.y))
-            {
-                if tile.tile_type.is_walkable_tile() {
-                    self.player_position.x += 1;
+            if let Some(tile) = self.map.tile_at((self.player.pos.x + 1, self.player.pos.y)) {
+                if let Some(pos) = self.map
+                    .monsters
+                    .iter_mut()
+                    .position(|m| m.pos() == tile.pos)
+                {
+                    let dead = {
+                        let monster = self.map.monsters.get_mut(pos).unwrap();
+
+                        let m_prev_hp = monster.hp();
+                        let p_prev_hp = self.player.hp;
+
+                        self.player.deal_damage(&mut **monster);
+
+                        self.events.push(Event::new(
+                            format!("Monster took {} damage.", m_prev_hp - monster.hp()),
+                            EventType::Combat,
+                        ));
+                        monster.deal_damage(&mut self.player);
+
+                        self.events.push(Event::new(
+                            format!("Player took {} damage.", p_prev_hp - self.player.hp),
+                            EventType::Combat,
+                        ));
+                        monster.is_dead()
+                    };
+
+                    if dead {
+                        self.map.monsters.remove(pos);
+                        self.events
+                            .push(Event::new(String::from("Monster died."), EventType::Combat));
+                    }
+                } else if tile.tile_type.is_walkable_tile() {
+                    self.player.pos.x += 1;
+
+                    let pos = self.player.pos;
+
+                    while let Some(pos) = self.map.items.iter().position(|(p, _)| p == &pos) {
+                        self.player.inv.push(self.map.items.remove(pos).1);
+                        self.events
+                            .push(Event::new(String::from("Picked up item."), EventType::Item));
+                    }
                 }
             }
         } else if let event::Keycode::Up = keycode {
-            if let Some(tile) = self.map
-                .tile_at((self.player_position.x, self.player_position.y - 1))
-            {
-                if tile.tile_type.is_walkable_tile() {
-                    self.player_position.y -= 1;
+            if let Some(tile) = self.map.tile_at((self.player.pos.x, self.player.pos.y - 1)) {
+                if let Some(pos) = self.map
+                    .monsters
+                    .iter_mut()
+                    .position(|m| m.pos() == tile.pos)
+                {
+                    let dead = {
+                        let monster = self.map.monsters.get_mut(pos).unwrap();
+
+                        let m_prev_hp = monster.hp();
+                        let p_prev_hp = self.player.hp;
+
+                        self.player.deal_damage(&mut **monster);
+
+                        self.events.push(Event::new(
+                            format!("Monster took {} damage.", m_prev_hp - monster.hp()),
+                            EventType::Combat,
+                        ));
+                        monster.deal_damage(&mut self.player);
+
+                        self.events.push(Event::new(
+                            format!("Player took {} damage.", p_prev_hp - self.player.hp),
+                            EventType::Combat,
+                        ));
+                        monster.is_dead()
+                    };
+
+                    if dead {
+                        self.map.monsters.remove(pos);
+                        self.events
+                            .push(Event::new(String::from("Monster died."), EventType::Combat));
+                    }
+                } else if tile.tile_type.is_walkable_tile() {
+                    self.player.pos.y -= 1;
+
+                    let pos = self.player.pos;
+
+                    while let Some(pos) = self.map.items.iter().position(|(p, _)| p == &pos) {
+                        self.player.inv.push(self.map.items.remove(pos).1);
+                        self.events
+                            .push(Event::new(String::from("Picked up item."), EventType::Item));
+                    }
                 }
             }
         } else if let event::Keycode::Down = keycode {
-            if let Some(tile) = self.map
-                .tile_at((self.player_position.x, self.player_position.y + 1))
-            {
-                if tile.tile_type.is_walkable_tile() {
-                    self.player_position.y += 1;
+            if let Some(tile) = self.map.tile_at((self.player.pos.x, self.player.pos.y + 1)) {
+                if let Some(pos) = self.map
+                    .monsters
+                    .iter_mut()
+                    .position(|m| m.pos() == tile.pos)
+                {
+                    let dead = {
+                        let monster = self.map.monsters.get_mut(pos).unwrap();
+
+                        let m_prev_hp = monster.hp();
+                        let p_prev_hp = self.player.hp;
+
+                        self.player.deal_damage(&mut **monster);
+
+                        self.events.push(Event::new(
+                            format!("Monster took {} damage.", m_prev_hp - monster.hp()),
+                            EventType::Combat,
+                        ));
+                        monster.deal_damage(&mut self.player);
+
+                        self.events.push(Event::new(
+                            format!("Player took {} damage.", p_prev_hp - self.player.hp),
+                            EventType::Combat,
+                        ));
+                        monster.is_dead()
+                    };
+
+                    if dead {
+                        self.map.monsters.remove(pos);
+                        self.events
+                            .push(Event::new(String::from("Monster died."), EventType::Combat));
+                    }
+                } else if tile.tile_type.is_walkable_tile() {
+                    self.player.pos.y += 1;
+
+                    let pos = self.player.pos;
+
+                    while let Some(pos) = self.map.items.iter().position(|(p, _)| p == &pos) {
+                        self.player.inv.push(self.map.items.remove(pos).1);
+                        self.events
+                            .push(Event::new(String::from("Picked up item."), EventType::Item));
+                    }
                 }
             }
         }

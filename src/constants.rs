@@ -325,6 +325,12 @@ pub const TILE_NUM_9: TileDecl = TileDecl {
     y: 1,
 };
 
+pub const TILE_SPEC_AT: TileDecl = TileDecl {
+    name: "@",
+    x: 0,
+    y: 2,
+};
+
 pub const TILE_SPEC_EXCLM: TileDecl = TileDecl {
     name: "!",
     x: 1,
@@ -430,7 +436,16 @@ pub const TILE_SPEC_QMARK: TileDecl = TileDecl {
     x: 31,
     y: 1,
 };
-
+pub const TILE_SPEC_LBRKT: TileDecl = TileDecl {
+    name: "[",
+    x: 27,
+    y: 2,
+};
+pub const TILE_SPEC_RBRKT: TileDecl = TileDecl {
+    name: "]",
+    x: 29,
+    y: 2,
+};
 pub const TILE_ROOM_BTMLEFT: TileDecl = TileDecl {
     name: "room_bottom_left",
     x: 8,
@@ -496,8 +511,18 @@ pub const TILE_DOOR: TileDecl = TileDecl {
     x: 15,
     y: 7,
 };
+pub const TILE_POTION: TileDecl = TileDecl {
+    name: "potion",
+    x: 9,
+    y: 4,
+};
+pub const TILE_AXE: TileDecl = TileDecl {
+    name: "axe",
+    x: 8,
+    y: 5,
+};
 
-const TILES: [TileDecl; 97] = [
+const TILES: [TileDecl; 102] = [
     TILE_SPACE,
     TILE_CAP_A,
     TILE_CAP_B,
@@ -561,6 +586,7 @@ const TILES: [TileDecl; 97] = [
     TILE_NUM_7,
     TILE_NUM_8,
     TILE_NUM_9,
+    TILE_SPEC_AT,
     TILE_SPEC_EXCLM,
     TILE_SPEC_DBLQT,
     TILE_SPEC_POUND,
@@ -582,6 +608,8 @@ const TILES: [TileDecl; 97] = [
     TILE_SPEC_EQSIGN,
     TILE_SPEC_RAGLBKT,
     TILE_SPEC_QMARK,
+    TILE_SPEC_LBRKT,
+    TILE_SPEC_RBRKT,
     TILE_ROOM_BTMLEFT,
     TILE_ROOM_BTMRIGHT,
     TILE_ROOM_SIDELR,
@@ -595,6 +623,8 @@ const TILES: [TileDecl; 97] = [
     TILE_ROOM_SOLID,
     TILE_PATH,
     TILE_DOOR,
+    TILE_POTION,
+    TILE_AXE,
 ];
 
 pub fn register_tiles(ts: &mut TileSet) -> Result<(), ()> {

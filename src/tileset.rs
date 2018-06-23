@@ -4,11 +4,12 @@ use ggez::{
 
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
 pub struct TileSet {
     tile_size: (f32, f32),
     dimensions: (f32, f32),
     tile_names: HashMap<&'static str, (f32, f32)>,
-    scale_factor: f32,
+    pub scale_factor: f32,
     sprite_batch: SpriteBatch,
 }
 
@@ -66,6 +67,20 @@ impl TileSet {
             color,
             ..Default::default()
         });
+
+        Ok(())
+    }
+
+    pub fn queue_tile_with_background<'a>(
+        &mut self,
+        background_tile: &'a str,
+        foreground_tile: &'a str,
+        coords: (i32, i32),
+        background_color: Option<graphics::Color>,
+        foreground_color: Option<graphics::Color>,
+    ) -> Result<(), &'a str> {
+        self.queue_tile(background_tile, coords, background_color)?;
+        self.queue_tile(foreground_tile, coords, foreground_color)?;
 
         Ok(())
     }
