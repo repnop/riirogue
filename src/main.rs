@@ -16,13 +16,15 @@ mod tileset;
 
 use entities::Player;
 use ggez::{
-    conf::{self, WindowMode}, event, graphics, Context, GameResult,
+    conf::{self, WindowMode}, event, graphics::{self, Color}, Context, GameResult,
 };
 use helpers::{clamp, Coords};
 use map::{
     generation::{generate_map, MapGenOptions, Simple}, Map,
 };
-use std::{env, path};
+use std::{
+    env, path, time::{Duration, Instant},
+};
 use tileset::TileSet;
 
 const TILES_X: i32 = 50;
@@ -63,13 +65,13 @@ impl EventType {
         }
     }
 
-    fn color(&self) -> graphics::Color {
+    fn color(&self) -> Color {
         use self::EventType::*;
 
         match self {
-            Combat => graphics::Color::from_rgb(191, 0, 0),
-            Healing => graphics::Color::from_rgb(0, 191, 0),
-            Item => graphics::Color::from_rgb(191, 191, 0),
+            Combat => Color::from_rgb(191, 0, 0),
+            Healing => Color::from_rgb(0, 191, 0),
+            Item => Color::from_rgb(191, 191, 0),
         }
     }
 }
@@ -78,11 +80,18 @@ impl EventType {
 struct Event {
     msg: String,
     ty: EventType,
+    time: Instant,
+    disabled: bool,
 }
 
 impl Event {
     fn new(msg: String, ty: EventType) -> Event {
-        Event { msg, ty }
+        Event {
+            msg,
+            ty,
+            time: Instant::now(),
+            disabled: false,
+        }
     }
 }
 
@@ -122,7 +131,13 @@ impl GameState {
         })
     }
 
-    fn draw_string(&mut self, text: &str, origin: (i32, i32), color: Option<graphics::Color>) {
+    fn draw_string(
+        &mut self,
+        text: &str,
+        origin: (i32, i32),
+        background_color: Option<Color>,
+        foreground_color: Option<Color>,
+    ) {
         let mut s = String::with_capacity(1);
         let mut origin_offset = 0;
 
@@ -133,8 +148,12 @@ impl GameState {
                 "solid",
                 &s,
                 (origin.0 + origin_offset, origin.1),
-                Some(graphics::Color::from_rgba(0, 0, 0, 0xFF)),
-                color,
+                if let None = background_color {
+                    Some(Color::from_rgb(0, 0, 0))
+                } else {
+                    background_color
+                },
+                foreground_color,
             ) {
                 println!("`{}` not found", s);
             }
@@ -145,26 +164,64 @@ impl GameState {
     }
 
     fn draw_events(&mut self) {
+        let time_to_expire = Duration::from_millis(5000);
+        self.events
+            .iter_mut()
+            .filter(|e| !e.disabled && e.time.elapsed() > time_to_expire)
+            .for_each(|e| e.disabled = true);
+
+        let get_transparency = |e: &Event| -> u8 {
+            let elapsed =
+                e.time.elapsed().as_secs() as u32 * 1000 + e.time.elapsed().subsec_millis();
+            let elapsed = elapsed as f64;
+            if elapsed > 3000f64 {
+                255 - (255f64 * ((elapsed - 3000f64) / 2000f64)) as u8
+            } else {
+                255
+            }
+        };
+
         let events: Vec<_> = self.events
             .iter()
             .rev()
+            .filter(|e| !e.disabled)
             .take(5)
             .map(|s| s.clone())
             .collect();
+        let len = events.len() as i32;
         for (i, event) in events.into_iter().enumerate() {
-            self.draw_string("[", (0, DISPLAY_MAP_HEIGHT - (5 - i as i32)), None);
+            let t = get_transparency(&event);
+            let (r, g, b) = event.ty.color().to_rgb();
+            let altered_color: Color = (r, g, b, t).into();
+
+            self.draw_string(
+                "[",
+                (0, DISPLAY_MAP_HEIGHT - (len - i as i32)),
+                Some((0, 0, 0, t).into()),
+                Some((255, 255, 255, t).into()),
+            );
             self.ts
                 .queue_tile_with_background(
                     "solid",
                     event.ty.icon(),
-                    (1, DISPLAY_MAP_HEIGHT - (5 - i as i32)),
-                    Some(graphics::Color::from_rgba(0, 0, 0, 0xFF)),
-                    Some(event.ty.color()),
+                    (1, DISPLAY_MAP_HEIGHT - (len - i as i32)),
+                    Some((0, 0, 0, t).into()),
+                    Some(altered_color),
                 )
                 .unwrap();
-            self.draw_string("]", (2, DISPLAY_MAP_HEIGHT - (5 - i as i32)), None);
+            self.draw_string(
+                "]",
+                (2, DISPLAY_MAP_HEIGHT - (len - i as i32)),
+                Some((0, 0, 0, t).into()),
+                Some((255, 255, 255, t).into()),
+            );
 
-            self.draw_string(&event.msg, (3, DISPLAY_MAP_HEIGHT - (5 - i as i32)), None);
+            self.draw_string(
+                &event.msg,
+                (3, DISPLAY_MAP_HEIGHT - (len - i as i32)),
+                Some((0, 0, 0, t).into()),
+                Some((255, 255, 255, t).into()),
+            );
         }
     }
 
@@ -180,7 +237,7 @@ impl GameState {
                 "solid",
                 top_left,
                 (TILES_X, TILES_Y / 2),
-                Some(graphics::Color::from_rgba(0x00, 0x00, 0x00, 0xFA)),
+                Some(Color::from_rgba(0x00, 0x00, 0x00, 0xFA)),
             )
             .unwrap();
 
@@ -189,13 +246,15 @@ impl GameState {
         self.draw_string(
             ">",
             (5, top_left.1 + 5 + cursor_offset),
-            Some(graphics::Color::from_rgba(0xFF, 0xFF, 0xFF, 0xFF)),
+            None,
+            Some(Color::from_rgba(0xFF, 0xFF, 0xFF, 0xFF)),
         );
 
         self.draw_string(
             "1. Menu Text",
             (6, top_left.1 + 5),
-            Some(graphics::Color::from_rgba(0xFF, 0xFF, 0xFF, 0xFF)),
+            None,
+            Some(Color::from_rgba(0xFF, 0xFF, 0xFF, 0xFF)),
         );
     }
 }
@@ -242,7 +301,7 @@ impl event::EventHandler for GameState {
             .unwrap();
 
         let hp = self.player.hp;
-        self.draw_string(&format!("HP: {}", hp), (0, 0), None);
+        self.draw_string(&format!("HP: {}", hp), (0, 0), None, None);
 
         self.draw_events();
 
@@ -254,7 +313,7 @@ impl event::EventHandler for GameState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        graphics::set_background_color(ctx, graphics::Color::from_rgba(0, 0, 0, 1));
+        graphics::set_background_color(ctx, Color::from_rgba(0, 0, 0, 1));
         graphics::clear(ctx);
         self.ts.render(ctx)?;
         self.ts.clear_queue();
